@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7c8b6f">
+<title>Видео-поздравление</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f1e7;
+    --card: #ffffff;
+    --ink: #33392c;
+    --muted: #8c8576;
+    --sage: #7c8b6f;
+    --sage-dark: #5f6e54;
+    --gold: #c9a66b;
+    --error: #b5524a;
+    --ring-track: #e7e1d3;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 440px;
+    height: 100dvh;
+    background: var(--card);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  @media (min-width: 480px) {
+    body { padding: 24px; }
+    .app {
+      height: min(820px, 100dvh);
+      border-radius: 24px;
+      box-shadow: 0 20px 60px -20px rgba(51, 57, 44, 0.25);
+    }
+  }
+
+  .screen {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    padding: 32px 28px;
+    text-align: center;
+    overflow-y: auto;
+  }
+  .screen.active { display: flex; }
+
+  .ornament {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 28px;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 600;
+    font-size: 32px;
+    margin: 0 0 12px;
+    line-height: 1.2;
+  }
+
+  p.lead {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0 0 24px;
+  }
+
+  .divider {
+    width: 48px;
+    height: 1px;
+    background: var(--gold);
+    margin: 20px auto 28px;
+  }
+
+  label.field-label {
+    display: block;
+    text-align: left;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  input[type=text] {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid var(--ring-track);
+    border-radius: 12px;
+    font-size: 16px;
+    font-family: inherit;
+    margin-bottom: 24px;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  input[type=text]:focus {
+    outline: 2px solid var(--sage);
+    outline-offset: 1px;
+  }
+
+  .spacer { flex: 1; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 16px 24px;
+    border-radius: 999px;
+    border: none;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--sage); color: #fff; }
+  .btn-primary:hover { background: var(--sage-dark); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--ring-track);
+  }
+  .btn[disabled] { opacity: 0.5; cursor: default; }
+
+  /* ----- Запись ----- */
+  .camera-wrap {
+    position: relative;
+    flex: 1;
+    margin: -32px -28px 16px;
+    background: #000;
+    overflow: hidden;
+  }
+  video.preview, video.playback {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #000;
+  }
+  video.playback { object-fit: contain; }
+
+  .timer-pill {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .timer-pill.show { opacity: 1; }
+
+  .record-controls {
+    position: absolute;
+    bottom: 24px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+  }
+
+  .record-btn {
+    position: relative;
+    width: 76px;
+    height: 76px;
+  }
+  .record-btn svg { transform: rotate(-90deg); }
+  .ring-track { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 4; }
+  .ring-progress {
+    fill: none;
+    stroke: var(--gold);
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.1s linear;
+  }
+  .record-core {
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .record-core.recording {
+    background: var(--error);
+    border-radius: 12px;
+    inset: 24px;
+  }
+
+  /* ----- Итоговые экраны ----- */
+  .icon-circle {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 32px;
+  }
+  .spinner {
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 1. Приветствие -->
+  <section id="screen-welcome" class="screen active">
+    <div class="ornament">❀</div>
+    <!-- Замените имена на свои -->
+    <h1>Видео<br>Свадьбы</h1>
+    <p class="lead">Запишите короткое видео-поздравление молодожёнам — оно сразу попадёт в их свадебный архив.</p>
+    <div class="divider"></div>
+    <label class="field-label" for="guestName">Как вас представить? (необязательно)</label>
+    <input type="text" id="guestName" placeholder="Ваше имя" autocomplete="name">
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="btnStart">Включить камеру</button>
+  </section>
+
+  <!-- 2. Запись -->
+  <section id="screen-record" class="screen">
+    <div class="camera-wrap">
+      <video id="preview" class="preview" autoplay muted playsinline></video>
+      <div class="timer-pill" id="timerPill">00:00</div>
+      <div class="record-controls">
+        <div class="record-btn" id="recordBtn">
+          <svg viewBox="0 0 76 76" width="76" height="76">
+            <circle class="ring-track" cx="38" cy="38" r="34"></circle>
+            <circle class="ring-progress" id="ringProgress" cx="38" cy="38" r="34"></circle>
+          </svg>
+          <div class="record-core" id="recordCore"></div>
+        </div>
+      </div>
+    </div>
+    <p class="lead">Нажмите на кнопку, чтобы начать запись (до 45 секунд). Нажмите ещё раз, чтобы остановить.</p>
+  </section>
+
+  <!-- 3. Просмотр перед отправкой -->
+  <section id="screen-review" class="screen">
+    <div class="camera-wrap">
+      <video id="playback" class="playback" controls playsinline></video>
+    </div>
+    <p class="lead">Посмотрите, что получилось. Можно отправить молодожёнам или записать ещё раз.</p>
+    <button class="btn btn-primary" id="btnSend">Отправить молодожёнам</button>
+    <div style="height:12px"></div>
+    <button class="btn btn-ghost" id="btnRetake">Записать заново</button>
+  </section>
+
+  <!-- 4. Успех -->
+  <section id="screen-sent" class="screen">
+    <div class="spacer"></div>
+    <div class="icon-circle">💌</div>
+    <h1>Спасибо!</h1>
+    <p class="lead">Ваше поздравление сохранено. Молодожёны посмотрят его с особым удовольствием ❤️</p>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="btnAgain">Записать ещё одно</button>
+  </section>
+
+  <!-- 5. Ошибка -->
+  <section id="screen-error" class="screen">
+    <div class="spacer"></div>
+    <div class="icon-circle">⚠️</div>
+    <h1 id="errorTitle">Что-то пошло не так</h1>
+    <p class="lead" id="errorText">Попробуйте обновить страницу и повторить попытку.</p>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="btnRetry">Попробовать снова</button>
+  </section>
+
+</div>
+
+<script>
+  // ====== НАСТРОЙКИ ======
+  const CONFIG = {
+    // Вставьте сюда URL веб-приложения из Google Apps Script (см. SETUP.md)
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwn2Mx1xdOlqiWPHnEVG0i6E1B2Z_PlsYrZ8OXgxcQBI-S2xFzOy1FtrudI7ysj7iPT/exec',
+    maxDuration: 45, // максимальная длина видео в секундах
+  };
+
+  const screens = {
+    welcome: document.getElementById('screen-welcome'),
+    record: document.getElementById('screen-record'),
+    review: document.getElementById('screen-review'),
+    sent: document.getElementById('screen-sent'),
+    error: document.getElementById('screen-error'),
+  };
+
+  function showScreen(name) {
+    Object.values(screens).forEach(s => s.classList.remove('active'));
+    screens[name].classList.add('active');
+  }
+
+  let stream = null;
+  let mediaRecorder = null;
+  let chunks = [];
+  let recordedBlob = null;
+  let timerInterval = null;
+  let elapsed = 0;
+
+  const MAX = CONFIG.maxDuration;
+  const RING_R = 34;
+  const RING_CIRC = 2 * Math.PI * RING_R;
+
+  const preview = document.getElementById('preview');
+  const playback = document.getElementById('playback');
+  const ringProgress = document.getElementById('ringProgress');
+  const recordCore = document.getElementById('recordCore');
+  const timerPill = document.getElementById('timerPill');
+
+  ringProgress.style.strokeDasharray = RING_CIRC;
+  ringProgress.style.strokeDashoffset = 0;
+
+  document.getElementById('btnStart').addEventListener('click', startCamera);
+  document.getElementById('recordBtn').addEventListener('click', toggleRecording);
+  document.getElementById('btnSend').addEventListener('click', sendVideo);
+  document.getElementById('btnRetake').addEventListener('click', retake);
+  document.getElementById('btnAgain').addEventListener('click', recordAnother);
+  document.getElementById('btnRetry').addEventListener('click', () => {
+    showScreen(recordedBlob ? 'review' : 'welcome');
+  });
+
+  async function startCamera() {
+    if (!window.MediaRecorder) {
+      showError({ name: 'NoMediaRecorder' });
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true,
+      });
+      preview.srcObject = stream;
+      showScreen('record');
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  function getMimeType() {
+    const types = [
+      'video/mp4;codecs=h264,aac',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4',
+    ];
+    for (const t of types) {
+      if (MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return '';
+  }
+
+  function toggleRecording() {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      startRecording();
+    } else {
+      stopRecording();
+    }
+  }
+
+  function startRecording() {
+    chunks = [];
+    const mimeType = getMimeType();
+    try {
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType || undefined,
+        videoBitsPerSecond: 2500000,
+        audioBitsPerSecond: 128000,
+      });
+    } catch (err) {
+      showError(err);
+      return;
+    }
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    mediaRecorder.onstop = onRecordingStop;
+    mediaRecorder.start();
+
+    elapsed = 0;
+    recordCore.classList.add('recording');
+    timerPill.classList.add('show');
+    updateTimer();
+    timerInterval = setInterval(() => {
+      elapsed += 0.1;
+      updateTimer();
+      if (elapsed >= MAX) stopRecording();
+    }, 100);
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    clearInterval(timerInterval);
+    recordCore.classList.remove('recording');
+  }
+
+  function updateTimer() {
+    const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+    const s = Math.floor(elapsed % 60).toString().padStart(2, '0');
+    timerPill.textContent = `${m}:${s}`;
+    const offset = RING_CIRC * (1 - Math.min(elapsed, MAX) / MAX);
+    ringProgress.style.strokeDashoffset = Math.max(0, offset);
+  }
+
+  function onRecordingStop() {
+    const mimeType = mediaRecorder.mimeType || 'video/webm';
+    recordedBlob = new Blob(chunks, { type: mimeType });
+    playback.src = URL.createObjectURL(recordedBlob);
+    timerPill.classList.remove('show');
+    showScreen('review');
+  }
+
+  function retake() {
+    recordedBlob = null;
+    playback.removeAttribute('src');
+    elapsed = 0;
+    updateTimer();
+    showScreen('record');
+  }
+
+  function recordAnother() {
+    recordedBlob = null;
+    elapsed = 0;
+    updateTimer();
+    showScreen('record');
+  }
+
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function sendVideo() {
+    const btnSend = document.getElementById('btnSend');
+    const btnRetake = document.getElementById('btnRetake');
+    btnSend.disabled = true;
+    btnRetake.disabled = true;
+    btnSend.innerHTML = '<span class="spinner"></span> Отправка...';
+
+    try {
+      const dataUrl = await blobToBase64(recordedBlob);
+      const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
+      const guestName = document.getElementById('guestName').value.trim() || 'Гость';
+      const safeName = guestName.replace(/[^a-zA-Zа-яА-ЯёЁ0-9 ]/g, '').trim() || 'Гость';
+      const filename = `${Date.now()}_${safeName}.${ext}`;
+
+      await fetch(CONFIG.appsScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({
+          filename,
+          mimeType: recordedBlob.type,
+          guest: guestName,
+          data: dataUrl,
+        }),
+      });
+
+      showScreen('sent');
+    } catch (err) {
+      showError(err, true);
+    } finally {
+      btnSend.disabled = false;
+      btnRetake.disabled = false;
+      btnSend.textContent = 'Отправить молодожёнам';
+    }
+  }
+
+  function showError(err, isUpload) {
+    console.error(err);
+    const title = document.getElementById('errorTitle');
+    const text = document.getElementById('errorText');
+
+    if (isUpload) {
+      title.textContent = 'Не удалось отправить';
+      text.textContent = 'Проверьте интернет-соединение и попробуйте ещё раз — видео не потеряно.';
+    } else if (err && err.name === 'NotAllowedError') {
+      title.textContent = 'Нужен доступ к камере';
+      text.textContent = 'Разрешите доступ к камере и микрофону в настройках браузера, затем обновите страницу.';
+    } else if (err && err.name === 'NotFoundError') {
+      title.textContent = 'Камера не найдена';
+      text.textContent = 'На этом устройстве не удалось найти камеру.';
+    } else if (err && err.name === 'NoMediaRecorder') {
+      title.textContent = 'Браузер не поддерживается';
+      text.textContent = 'Попробуйте открыть страницу в Safari (iPhone) или Chrome (Android) последней версии.';
+    } else {
+      title.textContent = 'Что-то пошло не так';
+      text.textContent = 'Попробуйте обновить страницу и повторить попытку.';
+    }
+    showScreen('error');
+  }
+</script>
+</body>
+</html>
