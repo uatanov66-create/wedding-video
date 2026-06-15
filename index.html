@@ -159,7 +159,7 @@
     background: #000;
     overflow: hidden;
   }
-  video.preview, video.playback {
+  video.preview, video.playback, canvas.preview {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -184,6 +184,25 @@
     transition: opacity 0.2s ease;
   }
   .timer-pill.show { opacity: 1; }
+
+  .switch-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .switch-btn:active { transform: scale(0.92); }
+  .switch-btn[disabled] { opacity: 0.35; pointer-events: none; }
 
   .record-controls {
     position: absolute;
@@ -252,8 +271,8 @@
   <section id="screen-welcome" class="screen active">
     <div class="ornament">❀</div>
     <!-- Замените имена на свои -->
-    <h1>Видео<br>Свадьбы</h1>
-    <p class="lead">Запишите короткое видео-поздравление молодожёнам — оно сразу попадёт в их свадебный архив.</p>
+    <h1>Видео<br>свадьбы</h1>
+    <p class="lead">Запишите короткое видео молодожёнам — оно сразу попадёт в их свадебный архив.</p>
     <div class="divider"></div>
     <label class="field-label" for="guestName">Как вас представить? (необязательно)</label>
     <input type="text" id="guestName" placeholder="Ваше имя" autocomplete="name">
@@ -264,8 +283,19 @@
   <!-- 2. Запись -->
   <section id="screen-record" class="screen">
     <div class="camera-wrap">
-      <video id="preview" class="preview" autoplay muted playsinline></video>
+      <!-- Скрытый источник кадров с камеры -->
+      <video id="preview" autoplay muted playsinline style="display:none"></video>
+      <!-- Видимое превью: всегда без зеркалирования, ровно то, что попадёт в записанное видео -->
+      <canvas id="previewCanvas" class="preview"></canvas>
       <div class="timer-pill" id="timerPill">00:00</div>
+      <button class="switch-btn" id="switchBtn" aria-label="Переключить камеру" title="Переключить камеру">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7v4a1 1 0 0 0 1 1h4"></path>
+          <path d="M21 17v-4a1 1 0 0 0 -1 -1h-4"></path>
+          <path d="M3.5 10a8 8 0 0 1 14.5 -4.5l3 3.5"></path>
+          <path d="M20.5 14a8 8 0 0 1 -14.5 4.5l-3 -3.5"></path>
+        </svg>
+      </button>
       <div class="record-controls">
         <div class="record-btn" id="recordBtn">
           <svg viewBox="0 0 76 76" width="76" height="76">
@@ -339,16 +369,22 @@
   let recordedBlob = null;
   let timerInterval = null;
   let elapsed = 0;
+  let currentFacingMode = 'user'; // 'user' = фронтальная, 'environment' = задняя
+  let drawLoopId = null;
+  let canvasStream = null;
 
   const MAX = CONFIG.maxDuration;
   const RING_R = 34;
   const RING_CIRC = 2 * Math.PI * RING_R;
 
   const preview = document.getElementById('preview');
+  const previewCanvas = document.getElementById('previewCanvas');
+  const canvasCtx = previewCanvas.getContext('2d');
   const playback = document.getElementById('playback');
   const ringProgress = document.getElementById('ringProgress');
   const recordCore = document.getElementById('recordCore');
   const timerPill = document.getElementById('timerPill');
+  const switchBtn = document.getElementById('switchBtn');
 
   ringProgress.style.strokeDasharray = RING_CIRC;
   ringProgress.style.strokeDashoffset = 0;
@@ -361,6 +397,7 @@
   document.getElementById('btnRetry').addEventListener('click', () => {
     showScreen(recordedBlob ? 'review' : 'welcome');
   });
+  switchBtn.addEventListener('click', switchCamera);
 
   async function startCamera() {
     if (!window.MediaRecorder) {
@@ -368,14 +405,79 @@
       return;
     }
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: true,
-      });
-      preview.srcObject = stream;
+      await openStream(currentFacingMode);
       showScreen('record');
     } catch (err) {
       showError(err);
+    }
+  }
+
+  // Открывает камеру с заданным facingMode и запускает отрисовку в canvas
+  async function openStream(facingMode) {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
+    });
+
+    // Останавливаем предыдущий поток, если был
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+
+    stream = newStream;
+    preview.srcObject = stream;
+    await preview.play().catch(() => {});
+
+    // Ждём, пока станут известны реальные размеры видео
+    if (!preview.videoWidth) {
+      await new Promise(resolve => {
+        preview.addEventListener('loadedmetadata', resolve, { once: true });
+      });
+    }
+
+    previewCanvas.width = preview.videoWidth || 1280;
+    previewCanvas.height = preview.videoHeight || 720;
+
+    startDrawLoop();
+  }
+
+  // Непрерывно рисует кадры с камеры в canvas.
+  // Превью всегда показывает РОВНО то, что попадёт в записанное видео — без зеркалирования.
+  function startDrawLoop() {
+    stopDrawLoop();
+    function draw() {
+      if (preview.videoWidth && preview.videoHeight) {
+        if (previewCanvas.width !== preview.videoWidth || previewCanvas.height !== preview.videoHeight) {
+          previewCanvas.width = preview.videoWidth;
+          previewCanvas.height = preview.videoHeight;
+        }
+        canvasCtx.drawImage(preview, 0, 0, previewCanvas.width, previewCanvas.height);
+      }
+      drawLoopId = requestAnimationFrame(draw);
+    }
+    draw();
+  }
+
+  function stopDrawLoop() {
+    if (drawLoopId) {
+      cancelAnimationFrame(drawLoopId);
+      drawLoopId = null;
+    }
+  }
+
+  async function switchCamera() {
+    if (recordCore.classList.contains('recording')) return; // нельзя переключать во время записи
+
+    const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    switchBtn.disabled = true;
+    try {
+      await openStream(newFacingMode);
+      currentFacingMode = newFacingMode;
+    } catch (err) {
+      // не получилось переключиться (например, нет задней камеры) - оставляем текущую
+      console.error(err);
+    } finally {
+      switchBtn.disabled = false;
     }
   }
 
@@ -403,9 +505,21 @@
 
   function startRecording() {
     chunks = [];
+
+    // Источник видео для записи - тот же canvas, что и превью (без зеркала)
+    if (canvasStream) {
+      canvasStream.getTracks().forEach(track => track.stop());
+    }
+    canvasStream = previewCanvas.captureStream(30);
+    const audioTracks = stream.getAudioTracks();
+    const recordStream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...audioTracks,
+    ]);
+
     const mimeType = getMimeType();
     try {
-      mediaRecorder = new MediaRecorder(stream, {
+      mediaRecorder = new MediaRecorder(recordStream, {
         mimeType: mimeType || undefined,
         videoBitsPerSecond: 2500000,
         audioBitsPerSecond: 128000,
@@ -421,6 +535,7 @@
     elapsed = 0;
     recordCore.classList.add('recording');
     timerPill.classList.add('show');
+    switchBtn.disabled = true;
     updateTimer();
     timerInterval = setInterval(() => {
       elapsed += 0.1;
@@ -435,6 +550,7 @@
     }
     clearInterval(timerInterval);
     recordCore.classList.remove('recording');
+    switchBtn.disabled = false;
   }
 
   function updateTimer() {
